@@ -23,7 +23,15 @@ def mensaje_componente(mensaje: dict) -> rx.Component:
             rx.hstack(
                 rx.button(
                     rx.icon("paperclip", color="black"),
-                    rx.text(nombre_archivo, font_size="10px", color="black"),
+                    rx.text(
+                        nombre_archivo, 
+                        font_size="10px", 
+                        color="black",
+                        max_width="120px",
+                        overflow="hidden",
+                        text_overflow="ellipsis",
+                        white_space="nowrap",
+                    ),
                     bg=COLOR_ADJUNTO,
                     padding="4px 8px",
                     border_radius="4px",
@@ -42,6 +50,9 @@ def mensaje_componente(mensaje: dict) -> rx.Component:
                     mensaje["texto"],
                     color=rx.cond(es_usuario, COLOR_TEXTO_USUARIO, COLOR_TEXTO_AI),
                     white_space="pre-wrap",
+                    word_break="break-word",
+                    overflow_wrap="break-word",
+                    width="100%",
                 ),
                 align_items="start",
                 spacing="1",
@@ -51,6 +62,8 @@ def mensaje_componente(mensaje: dict) -> rx.Component:
             border_radius=rx.cond(es_usuario,"8px 0 8px 8px", "0 8px 8px 8px"),
             box_shadow=SHADOW,
             max_width="85%",
+            min_width="0",
+            overflow="hidden",
         ),
         display="flex",
         justify_content=rx.cond(es_usuario, "flex-end", "flex-start"),
@@ -61,6 +74,23 @@ def mensaje_componente(mensaje: dict) -> rx.Component:
 def index() -> rx.Component:
     return rx.box(
         rx.vstack(
+            # Encabezado con información
+            rx.box(
+                rx.vstack(
+                    rx.heading("Chat con Gemini", size="6", color="white"),
+                    rx.text(
+                        "Adjunta archivos PDF, DOCX, XLSX o TXT para analizarlos con IA",
+                        color="white",
+                        font_size="0.9em",
+                        opacity="0.8"
+                    ),
+                    align_items="center",
+                    spacing="2",
+                ),
+                bg=COLOR_MENSAJE_USUARIO,
+                padding="15px",
+                width="100%",
+            ),
             # Área de mensajes
             rx.box(
                 rx.vstack(
@@ -86,6 +116,11 @@ def index() -> rx.Component:
                 rx.hstack(
                     rx.icon("paperclip", color="gray"),
                     rx.text(Estado.archivo_adjunto["name"], font_size="0.8em"),
+                    rx.text(
+                        Estado.tamaño_archivo_formateado,
+                        font_size="0.7em",
+                        color="gray"
+                    ),
                     rx.spacer(),
                     rx.icon(
                         "x",
@@ -95,75 +130,99 @@ def index() -> rx.Component:
                         _hover={"color": "red"},
                     ),
                     bg=COLOR_ADJUNTO,
-                    padding="4px 8px",
-                    border_radius="4px",
+                    padding="8px 12px",
+                    border_radius="8px",
                     margin_x="10px",
-                    width="100%",
+                    width="calc(100% - 20px)",
+                    border="1px solid #d1d5db",
                 ),
             ),
             # Área de entrada de mensajes
             rx.hstack(
-                # Input de tipo file para adjuntar archivos
-                rx.html("""
-                <label style="cursor: pointer; display: flex; align-items: center; justify-content: center; height: 100%; padding: 4px 4px; border-radius: 8px; color: #444444;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-paperclip" viewBox="0 0 16 16" style="font-size: 16px">
-                        <path d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 0 1 0V3a1.5 1.5 0 1 0-3 0v9a2.5 2.5 0 0 0 5 0V5a.5.5 0 0 1 1 0v7a3.5 3.5 0 1 1-7 0V3z"/>
-                    </svg>
-                    <input 
-                        type="file" 
-                        id="file-upload" 
-                        style="display: none;" 
-                        onchange="window.dispatchEvent(new CustomEvent('__reflex_file_selected', {detail: {files: this.files}}));"
-                    />
-                </label>
-                """),
-                # Script para manejar la selección de archivos
-                rx.script("""
-                window.addEventListener('__reflex_file_selected', function(e) {
-                    const file = e.detail.files[0];
-                    if (!file) return;
-                    
-                    const reader = new FileReader();
-                    reader.onload = function(event) {
-                        const fileContent = event.target.result;
-                        window._reflex.addEvent({
-                            name: "adjuntar_archivo",
-                            payload: {
-                                name: file.name,
-                                type: file.type,
-                                size: file.size,
-                                content: fileContent
-                            }
-                        });
-                    };
-                    reader.readAsDataURL(file);
-                });
-                """),
+                # Componente de upload oficial de Reflex
+                rx.vstack(
+                    rx.upload(
+                        rx.button(
+                            rx.icon("paperclip", size=16),
+                            bg="#f9fafb",
+                            color="#444444",
+                            border="1px solid #ddd",
+                            border_radius="8px",
+                            padding="8px",
+                            cursor="pointer",
+                            _hover={"bg": "#f3f4f6"},
+                            height="44px",
+                            width="44px",
+                        ),
+                        id="file_upload",
+                        accept={
+                            "application/pdf": [".pdf"],
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+                            "application/vnd.ms-excel": [".xls"],
+                            "text/plain": [".txt"]
+                        },
+                        multiple=False,
+                        padding="0",
+                        margin="0",
+                        width="44px",
+                        height="44px",
+                    ),
+                    # Botón para procesar el archivo seleccionado (oculto si no hay archivos)
+                    rx.cond(
+                        rx.selected_files("file_upload"),
+                        rx.button(
+                            "📎 Usar archivo",
+                            on_click=Estado.handle_upload(rx.upload_files("file_upload")),
+                            size="1",
+                            color_scheme="blue",
+                            variant="soft",
+                            margin_top="4px",
+                            font_size="12px",
+                            padding="4px 8px",
+                            height="auto",
+                            width="auto",
+                            white_space="nowrap",
+                        ),
+                        rx.box(),
+                    ),
+                    spacing="2",
+                    align_items="center",
+                ),
                 rx.input(
-                    placeholder="Escribe un mensaje...",
+                    placeholder="Escribe un mensaje o adjunta un archivo para analizar...",
                     value=Estado.mensaje,
                     on_change=Estado.set_mensaje,
                     on_key_down=lambda key: rx.cond(key == "Enter", Estado.enviar_mensaje, None),
                     flex="1",
                     border="1px solid #ddd",
                     border_radius="8px",
-                    padding="4px",
+                    padding="12px",
                     bg="#FFFFFF",
-                    color="#090909"
+                    color="#090909",
+                    height="44px",
+                    font_size="14px",
                 ),
                 rx.button(
-                    rx.icon("arrow-right"),
+                    rx.icon("arrow-right", size=18),
                     on_click=Estado.enviar_mensaje,
-                    is_disabled=Estado.cargando & ~Estado.mostrar_adjunto,
+                    is_disabled=Estado.cargando,
                     bg=COLOR_MENSAJE_USUARIO,
                     color="white",
                     border_radius="8px",
-                    height="100%",
+                    height="44px",
+                    width="44px",
+                    padding="0",
+                    cursor="pointer",
+                    _hover={"bg": "#3367d6"},
+                    _disabled={"bg": "#9ca3af", "cursor": "not-allowed"},
                 ),
                 width="100%",
-                padding="10px",
+                padding="15px",
                 bg="#FFFFFF",
-                border_top="1px solid #f0f0f0",
+                border_top="1px solid #e5e7eb",
+                gap="12px",
+                align_items="center",
             ),
             height="100vh",
             width="100%",
