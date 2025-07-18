@@ -4,6 +4,7 @@ import os
 import time
 from typing import List, Dict, Optional
 from .file_processor import FileProcessor
+from .database import procesar_comando_db
 
 # Cargar variables de entorno y configurar la API de Gemini
 load_dotenv()
@@ -142,12 +143,24 @@ class GeminiModel:
     @classmethod
     async def generar_respuesta(cls, mensaje: str, archivo_info: Optional[Dict] = None) -> str:
         """
-        Generar respuesta rápida con compresión inteligente.
+        Generar respuesta rápida con compresión inteligente y manejo de base de datos.
         """
         try:
             print("=== PROCESANDO SOLICITUD RÁPIDA ===")
             print(f"📝 Mensaje: '{mensaje}'")
             inicio_total = time.time()
+            
+            # 🆕 VERIFICAR SI ES UN COMANDO DE BASE DE DATOS
+            print("🔍 Verificando si es comando de base de datos...")
+            respuesta_db = procesar_comando_db(mensaje)
+            
+            if respuesta_db is not None:
+                print("💾 Comando de base de datos procesado")
+                tiempo_total = time.time() - inicio_total
+                print(f"⏱️  TIEMPO TOTAL DB: {tiempo_total:.2f}s")
+                return respuesta_db
+            
+            print("💬 No es comando de DB, procesando con Gemini...")
             
             chat_session = cls.get_chat_session()
             
@@ -164,7 +177,15 @@ class GeminiModel:
 CONTENIDO DEL ARCHIVO:
 {contenido_archivo}
 
-Instrucciones: Responde la pregunta del usuario basándote en el contenido del archivo. Sé directo y profesional."""
+💾 Base de datos disponible: Puedes usar comandos como:
+- "listar usuarios" - Ver todos los usuarios
+- "agregar usuario [nombre] programa [programa] contraseña [contraseña]" - Crear usuario
+- "buscar usuario [término]" - Buscar por nombre, ID o programa
+- "modificar usuario [id] usuario [nuevo] programa [nuevo] contraseña [nueva]" - Modificar
+- "eliminar usuario [id]" - Eliminar usuario
+- "estadísticas" - Ver estadísticas de la BD
+
+Instrucciones: Responde la pregunta del usuario basándote en el contenido del archivo. Si menciona usuarios o base de datos, explica que puede usar los comandos disponibles. Sé directo y profesional."""
                 
                 inicio_gemini = time.time()
                 respuesta = await chat_session.send_message_async(mensaje_completo)
@@ -178,8 +199,31 @@ Instrucciones: Responde la pregunta del usuario basándote en el contenido del a
             # CASO 2: Sin archivo adjunto y sin cache
             elif not archivo_info:
                 print("💬 Conversación normal")
+                
+                # Agregar información sobre comandos de BD disponibles
+                mensaje_con_db = f"""Usuario: {mensaje}
+
+💾 SISTEMA DE BASE DE DATOS DISPONIBLE:
+El usuario puede usar estos comandos para manejar la base de datos de usuarios:
+
+📋 CONSULTAS:
+- "listar usuarios" - Mostrar todos los usuarios
+- "buscar usuario [término]" - Buscar por nombre, ID o programa  
+- "estadísticas" - Ver estadísticas de la base de datos
+
+➕ AGREGAR:
+- "agregar usuario [nombre] programa [programa] contraseña [contraseña]"
+
+✏️ MODIFICAR:
+- "modificar usuario [id] usuario [nuevo] programa [nuevo] contraseña [nueva]"
+
+🗑️ ELIMINAR:
+- "eliminar usuario [id]"
+
+INSTRUCCIONES: Si el usuario pregunta sobre usuarios, base de datos, o quiere realizar operaciones CRUD, explícale que puede usar estos comandos exactos. Si es una consulta general, responde normalmente."""
+                
                 inicio_gemini = time.time()
-                respuesta = await chat_session.send_message_async(mensaje)
+                respuesta = await chat_session.send_message_async(mensaje_con_db)
                 tiempo_gemini = time.time() - inicio_gemini
                 print(f"⏱️  TIEMPO GEMINI: {tiempo_gemini:.2f}s")
                 return respuesta.text
@@ -208,7 +252,10 @@ Instrucciones: Responde la pregunta del usuario basándote en el contenido del a
 CONTENIDO COMPLETO DEL ARCHIVO:
 {contenido_archivo}
 
-Instrucciones: Analiza todo el contenido del archivo y responde la pregunta del usuario. Sé preciso y directo."""
+💾 Base de datos disponible: El usuario puede manejar usuarios con comandos como:
+- "listar usuarios", "agregar usuario [datos]", "buscar usuario [término]", etc.
+
+Instrucciones: Analiza todo el contenido del archivo y responde la pregunta del usuario. Si menciona usuarios o base de datos, explica los comandos disponibles. Sé preciso y directo."""
                 
                 inicio_gemini = time.time()
                 respuesta = await chat_session.send_message_async(mensaje_completo)
